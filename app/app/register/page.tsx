@@ -179,7 +179,7 @@ export default function RegisterPage() {
 
         {/* Fingerprint Upload */}
         <h3 style={{ margin: "20px 0 10px", color: "#555" }}>Fingerprint</h3>
-        <input type="file" accept="image/*" onChange={handleFileChange} style={{ marginBottom: 15 }} />
+        <input type="file" accept="image/*" onChange={handleFileChange} style={fileInputStyle} />
 
         <button type="submit" style={buttonStyle}>
           Register Patient
@@ -210,4 +210,17 @@ const buttonStyle: React.CSSProperties = {
   color: "#fff",
   fontSize: 16,
   cursor: "pointer",
+  marginTop:20,
+};
+
+const fileInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 8,
+  border: "2px dashed #ccc",
+  textAlign: "center",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  color: "#555",
+  fontWeight: 500,
 };
