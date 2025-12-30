@@ -9,12 +9,13 @@ export async function POST(req: Request, context: { params: { patientId: string 
   const { patientId } = await context.params; // <-- add await
 
   try {
-    const { amount, billFileUrl } = await req.json();
+    const { amount,billType, billFileUrl } = await req.json();
     if (!amount) return NextResponse.json({ error: "Amount is required" }, { status: 400 });
 
     const bill = await Bill.create({
       patientId, // now safe
       amount,
+      billType,
       billFileUrl,
       paid: false,
     });

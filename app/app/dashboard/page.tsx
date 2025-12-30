@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams , useRouter } from "next/navigation";
+import Loading from "../loading";
 
 type Patient = {
   patientId: string;
@@ -19,7 +20,6 @@ type Patient = {
   roomNo?: string;
   wardNo?: string;
   updatedAt: string;
-  dischargeSummary?: string;
 };
 
 type Bill = {
@@ -28,6 +28,12 @@ type Bill = {
   paid: boolean;
   createdAt: string;
   billFileUrl?: string;
+};
+
+type DoctorSummary = {
+  _id: string;
+  summaryImageUrl: string;
+  createdAt: string;
 };
 
 export default function DashboardPage() {
@@ -40,6 +46,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [doctorHistory, setDoctorHistory] = useState<{ _id: string; summaryImageUrl: string; createdAt: string }[]>([]);
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+
+  const [isDischarged, setIsDischarged] = useState(false);
+
+  const [doctorNoteFile, setDoctorNoteFile] = useState<File | null>(null);
+  const [doctorSummaries, setDoctorSummaries] = useState<DoctorSummary[]>([]);
+
+  const [showDoctorNoteModal, setShowDoctorNoteModal] = useState(false);
+
   // Hospital info modal
   const [showAdmitModal, setShowAdmitModal] = useState(false);
   const [hospitalInfo, setHospitalInfo] = useState({
@@ -48,10 +64,6 @@ export default function DashboardPage() {
     roomNo: "",
     wardNo: "",
   });
-
-  // Discharge summary modal
-  const [showDischargeModal, setShowDischargeModal] = useState(false);
-  const [dischargeText, setDischargeText] = useState("");
 
   useEffect(() => {
     if (!patientId) return;
@@ -70,9 +82,19 @@ export default function DashboardPage() {
       .then((res) => res.json())
       .then(setBills)
       .finally(() => setLoading(false));
+
+    // fetch doctor summaries
+    fetch(`/api/ds?patientId=${patientId}`)
+      .then((res) => res.json())
+      .then(setDoctorSummaries);
+
+    fetch(`/api/ds?patientId=${patientId}`)
+    .then(res => res.json())
+    .then(data => setDoctorHistory(data))
+    .catch(err => console.error(err));
   }, [patientId]);
 
-  if (loading) return <p style={{ padding: 20 }}>Loading...</p>;
+  if (loading) return Loading();
   if (error) return <p style={{ padding: 20, color: "red" }}>{error}</p>;
   if (!patient) return null;
 
@@ -106,17 +128,10 @@ export default function DashboardPage() {
     }
   };
 
-  // Discharge patient
   const submitDischarge = async () => {
     if (!patient) return;
 
     try {
-      // 1. Delete all bills for this patient
-      await fetch(`/api/bills/${patient.patientId}`, {
-        method: "DELETE",
-      });
-
-      // 2. Update patient status to discharged and save doctor's summary
       const res = await fetch(`/api/patients/${patient.patientId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -126,27 +141,45 @@ export default function DashboardPage() {
           roomNo: "",
           wardNo: "",
           referredBy: "",
-          dischargeSummary: dischargeText,
         }),
       });
-      const data = await res.json();
-      if (!data.error) {
-        setPatient(data);
 
-        // 3. Keep only unpaid bills in the state for discharge summary
-        const unpaid = bills.filter((b) => !b.paid);
-        setBills(unpaid);
-
-        setShowDischargeModal(false);
-        setDischargeText("");
+      const updatedPatient = await res.json();
+      if (updatedPatient.error) {
+        console.error(updatedPatient.error);
+        return;
       }
+
+      // Only show discharge summary locally
+      setIsDischarged(true);
+
+      // Refresh patient info
+      setPatient(updatedPatient);
+
+      // Refresh bills
+      const billsRes = await fetch(`/api/bills/${patient.patientId}`);
+      const billsData = await billsRes.json();
+      setBills(billsData);
+
+
     } catch (err) {
       console.error(err);
     }
   };
 
+
   return (
-    <main style={{ padding: 20, display: "flex", gap: 20, flexWrap: "wrap" }}>
+    <main
+      style={{
+        padding: 20,
+        display: "flex",
+        gap: 20,
+        flexWrap: "nowrap",
+        alignItems: "stretch",
+        width: "100%",
+        backgroundColor: "#f0f2f5",
+      }}
+    >
       {/* Patient Info Card */}
       <div style={cardStyle}>
         <h2>Patient Info</h2>
@@ -185,7 +218,7 @@ export default function DashboardPage() {
             <div><strong>Room Type:</strong> {patient.roomType || "-"}</div>
             <div><strong>Room No:</strong> {patient.roomNo || "-"}</div>
             <div><strong>Ward No:</strong> {patient.wardNo || "-"}</div>
-            <button style={buttonStyleRed} onClick={submitDischarge}>Discharge</button>
+            <button style={buttonStyleRed} onClick={() => setShowDoctorNoteModal(true)}>Discharge</button>
           </>
         ) : (
           <button style={buttonStyleBlue} onClick={handleAdmit}>Admit Patient</button>
@@ -198,24 +231,157 @@ export default function DashboardPage() {
             View Bills
           </button>
         </div>
+        <div style={{ marginTop: 15, position: "relative" }}>
+          <label style={{ fontWeight: "bold" }}>History:</label>
+          <div onClick={() => setShowHistoryDropdown(!showHistoryDropdown)} style={dropdownHeader}>
+            {showHistoryDropdown ? "Hide History" : "Show History"}
+            <span style={{ transform: showHistoryDropdown ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
+          </div>
+
+          {showHistoryDropdown && (
+            <div style={dropdownContent}>
+              {doctorHistory.length === 0 ? (
+                <p style={{ color: "#777" }}>No doctor notes yet.</p>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {doctorHistory.map((d) => (
+                    <li key={d._id} style={{ marginBottom: 10, borderBottom: "1px solid #eee", paddingBottom: 5 }}>
+                      <div><strong>Date:</strong> {new Date(d.createdAt).toLocaleString()}</div>
+                      <div>
+                        <a href={d.summaryImageUrl} target="_blank" rel="noreferrer" style={{ color: "#0070f3" }}>
+                          View / Download
+                        </a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Discharge Summary Card */}
-      {patient.status === "discharged" && (
+      {isDischarged && (
         <div style={cardStyleRight}>
           <h2>Discharge Summary</h2>
-          <div><strong>Date & Time:</strong> {formatDateTime(new Date().toISOString())}</div>
-          <div><strong>Total Unpaid Bills:</strong> ${totalUnpaid}</div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Date & Time:</strong>{" "}
+            {formatDateTime(patient.updatedAt)}
+          </div>
 
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Total Unpaid Bills:</strong> ₹{totalUnpaid}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
             <strong>Bills:</strong>
-            <ul>
-              {bills.map((b) => (
-                <li key={b._id}>
-                  {formatDateTime(b.createdAt)} - ${b.amount} - {b.billFileUrl ? <a href={b.billFileUrl} target="_blank" rel="noreferrer">Download</a> : "No file"}
-                </li>
-              ))}
-            </ul>
+            {bills.length === 0 ? (
+              <p style={{ color: "#777", marginTop: 6 }}>No unpaid bills 🎉</p>
+            ) : (
+              <ul>
+                {bills.map((b) => (
+                  <li key={b._id}>
+                    {formatDateTime(b.createdAt)} — ₹{b.amount}
+                    {b.billFileUrl && (
+                      <> — <a href={b.billFileUrl} target="_blank" rel="noreferrer">Download</a></>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Doctor Summary */}
+          <div style={{ marginTop: 20 }}>
+            <strong>Doctor's Summary:</strong>
+            {doctorSummaries.length === 0 ? (
+              <p style={{ color: "#777", marginTop: 6 }}>No doctor summary uploaded yet.</p>
+            ) : (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <img
+                    src={doctorSummaries[0].summaryImageUrl}
+                    alt="Doctor Summary"
+                    style={{ width: "100%", maxWidth: 400, border: "1px solid #ccc", borderRadius: 8 }}
+                  />
+                  <div>
+                    <a href={doctorSummaries[0].summaryImageUrl} download style={{ marginTop: 5, display: "inline-block" }}>Download</a>
+                  </div>
+                </div>
+
+                {doctorSummaries.length > 1 && (
+                  <div style={{ marginTop: 20 }}>
+                    <strong>History:</strong>
+                    <select
+                      style={{ width: "100%", padding: 8, marginTop: 5 }}
+                      onChange={(e) => {
+                        const selected = doctorSummaries.find(d => d._id === e.target.value);
+                        if (selected) setDoctorSummaries(prev => [selected, ...prev.filter(p => p._id !== selected._id)]);
+                      }}
+                    >
+                      {doctorSummaries.map((d) => (
+                        <option key={d._id} value={d._id}>
+                          {formatDateTime(d.createdAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Doctor Note Modal */}
+      {showDoctorNoteModal && (
+        <div style={modalOverlay}>
+          <div style={modalContent}>
+            <h3>Upload Doctor's Note</h3>
+            <label style={fileInputStyle}>
+              {doctorNoteFile ? doctorNoteFile.name : "Click or drag file to upload"}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setDoctorNoteFile(e.target.files?.[0] || null)}
+                style={{
+                  ...fileInputHidden,
+                  cursor: "pointer",
+                }}
+              />
+            </label>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                style={buttonStyleRed}
+                onClick={async () => {
+                  if (!doctorNoteFile) return alert("Please select a file");
+
+                  const formData = new FormData();
+                  formData.append("patientId", patient.patientId);
+                  formData.append("file", doctorNoteFile);
+
+                  const res = await fetch("/api/ds", { method: "POST", body: formData });
+                  const data = await res.json();
+                  if (data.error) return console.log(data.error);
+
+                  setDoctorSummaries(prev => [data, ...prev]);
+                  await submitDischarge();
+
+                  setShowDoctorNoteModal(false);
+                  setDoctorNoteFile(null);
+                }}
+              >
+                Confirm Discharge
+              </button>
+              <button
+                style={{ ...buttonStyle, backgroundColor: "#ccc", color: "#333" }}
+                onClick={() => setShowDoctorNoteModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -242,65 +408,62 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
-      {/* Discharge Modal */}
-      {showDischargeModal && (
-        <div style={modalOverlay}>
-          <div style={modalContent}>
-            <h3>Write Discharge Summary</h3>
-            <textarea value={dischargeText} onChange={(e) => setDischargeText(e.target.value)} style={{ width: "100%", height: 120, marginTop: 10, padding: 8 }} />
-            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-              <button style={buttonStyleRed} onClick={submitDischarge}>Confirm Discharge</button>
-              <button style={{ ...buttonStyle, backgroundColor: "#ccc", color: "#333" }} onClick={() => setShowDischargeModal(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </main>
   );
 }
 
 // Styles
 const cardStyle: React.CSSProperties = {
-  width: 550,
-  border: "1px solid #ddd",
+  flex: 1,
+  minWidth: 0,
   borderRadius: 12,
-  padding: 25,
-  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  backgroundColor: "#f9f9f9",
-  fontFamily: "Arial, sans-serif",
+  padding: 24,
+  boxShadow: "0 10px 20px rgba(0,0,0,0.08)",
+  backgroundColor: "#ffffff",
+  transition: "all 0.2s",
 };
 
 const cardStyleRight: React.CSSProperties = {
   flex: 1,
-  minWidth: 350,
-  border: "1px solid #ddd",
+  minWidth: 0,
   borderRadius: 12,
-  padding: 25,
-  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  backgroundColor: "#fff8e1",
-  fontFamily: "Arial, sans-serif",
+  padding: 24,
+  boxShadow: "0 10px 20px rgba(0,0,0,0.08)",
+  backgroundColor: "#fffbe6",
+  transition: "all 0.2s",
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: 8,
-  marginBottom: 10,
-  borderRadius: 6,
+  padding: 10,
+  marginBottom: 12,
+  borderRadius: 8,
   border: "1px solid #ccc",
+  fontSize: 14,
+  transition: "border 0.2s",
 };
 
 const buttonStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 6,
+  padding: "10px 16px",
+  borderRadius: 8,
   border: "none",
   color: "#fff",
   cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 14,
+  transition: "all 0.2s",
 };
 
-const buttonStyleRed: React.CSSProperties = { ...buttonStyle, backgroundColor: "#e53935" };
-const buttonStyleBlue: React.CSSProperties = { ...buttonStyle, backgroundColor: "#0070f3" };
+const buttonStyleRed: React.CSSProperties = {
+  ...buttonStyle,
+  background: "linear-gradient(90deg, #f44336, #e53935)",
+  boxShadow: "0 4px 12px rgba(244,67,54,0.3)",
+};
+const buttonStyleBlue: React.CSSProperties = {
+  ...buttonStyle,
+  background: "linear-gradient(90deg, #2196f3, #1976d2)",
+  boxShadow: "0 4px 12px rgba(33,150,243,0.3)",
+};
 
 const modalOverlay: React.CSSProperties = {
   position: "fixed",
@@ -317,7 +480,60 @@ const modalOverlay: React.CSSProperties = {
 
 const modalContent: React.CSSProperties = {
   backgroundColor: "#fff",
-  padding: 25,
-  borderRadius: 12,
-  width: 400,
+  padding: 28,
+  borderRadius: 14,
+  width: 420,
+  boxShadow: "0 12px 28px rgba(0,0,0,0.15)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const dropdownHeader: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  cursor: "pointer",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  backgroundColor: "#f7f7f7",
+  fontWeight: 500,
+  transition: "background 0.2s",
+};
+
+const dropdownContent: React.CSSProperties = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  width: "100%",
+  maxHeight: 250,
+  overflowY: "auto",
+  backgroundColor: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+  marginTop: 6,
+  padding: 12,
+  zIndex: 10,
+};
+
+const fileInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 8,
+  border: "2px dashed #ccc",
+  textAlign: "center",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  color: "#555",
+  fontWeight: 500,
+};
+
+const fileInputHidden: React.CSSProperties = {
+  position: "absolute",
+  width: "100%",
+  height: "100%",
+  opacity: 0,
+  cursor: "pointer",
 };

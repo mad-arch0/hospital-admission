@@ -11,7 +11,6 @@ export default function LoginPage() {
     e.preventDefault();
     if (!patientId) return alert("Please enter Patient ID");
 
-    // Navigate to dashboard with query param
     router.push(`/dashboard?patientId=${patientId}`);
   };
 
@@ -23,66 +22,36 @@ export default function LoginPage() {
         alignItems: "center",
         minHeight: "100vh",
         backgroundColor: "#f0f2f5",
-        fontFamily: "Arial, sans-serif",
       }}
     >
       <form
         onSubmit={handleSubmit}
         style={{
+          ...cardStyle,
           width: 400,
-          padding: 30,
-          borderRadius: 12,
-          backgroundColor: "#fff",
-          boxShadow: "0 8px 20px rgba(0,0,0,0.1)",
           textAlign: "center",
         }}
       >
-        <h1 style={{ marginBottom: 20, color: "#333" }}>Patient Login</h1>
+        <h1 style={{ marginBottom: 24, color: "#333" }}>Patient Login</h1>
 
         <input
           type="text"
           placeholder="Enter Patient ID"
           value={patientId}
           onChange={(e) => setPatientId(e.target.value)}
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            marginBottom: 20,
-            fontSize: 14,
-          }}
+          style={{ ...inputStyle, marginBottom: 20 }}
         />
 
         <button
           type="submit"
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 6,
-            border: "none",
-            backgroundColor: "#0070f3",
-            color: "#fff",
-            fontSize: 16,
-            cursor: "pointer",
-            marginBottom: 10,
-          }}
+          style={{ ...buttonStyleBlue, width: "100%", marginBottom: 12 }}
         >
           Login
         </button>
 
         <button
           type="button"
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 6,
-            border: "none",
-            backgroundColor: "#ccc",
-            color: "#333",
-            fontSize: 16,
-            cursor: "pointer",
-          }}
+          style={{ ...buttonStyleRed, width: "100%" }}
           onClick={() => router.push("/register")}
         >
           Register
@@ -91,3 +60,46 @@ export default function LoginPage() {
     </main>
   );
 }
+
+/* ================= STYLES ================= */
+
+const cardStyle: React.CSSProperties = {
+  borderRadius: 12,
+  padding: 30,
+  boxShadow: "0 10px 20px rgba(0,0,0,0.08)",
+  backgroundColor: "#ffffff",
+  transition: "all 0.2s",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  fontSize: 14,
+  height: 44,
+  boxSizing: "border-box",
+};
+
+const buttonStyle: React.CSSProperties = {
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "none",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 14,
+  height: 44,
+};
+
+const buttonStyleBlue: React.CSSProperties = {
+  ...buttonStyle,
+  background: "linear-gradient(90deg, #2196f3, #1976d2)",
+  boxShadow: "0 4px 12px rgba(33,150,243,0.3)",
+};
+
+const buttonStyleRed: React.CSSProperties = {
+  ...buttonStyle,
+  background: "linear-gradient(90deg, #9e9e9e, #757575)",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+};
